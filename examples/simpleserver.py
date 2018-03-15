@@ -16,7 +16,7 @@ while True:
     if segmnt.pkt_type == _pTYPES.END:
         break
     else:
-        if segmnt.pkt_type == _pTYPES.CHUNK:
+        if segmnt.pkt_type == _pTYPES.CHUNK:#???
             buff.append(segmnt.pkt_data)
 print('break')
 buffer = "".join(buff)
