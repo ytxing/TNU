@@ -1,3 +1,6 @@
 class _pTYPES:
     CHUNK = 0
     END = 1
+    REQUEST_TO_ADD_SLAVE = 2
+    RESPONSE_TO_ADD_SLAVE = 3
+    REJECT_TO_ADD_SLAVE = 4

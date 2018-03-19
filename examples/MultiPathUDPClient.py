@@ -1,18 +1,25 @@
 import socket
 from TNU.modules._SEGMENT import SEGMENT
 from TNU.modules._STATES import _pTYPES
-
-from queue import PriorityQueue
+from TNU.modules._BUFFER import BUFFER
 from threading import Thread, Event
 import time
 
 
-class Master_TCP(socket):
+class slave_config:
+    addr = '127.0.0.1'
+    port = 9881
+    pathid_list = []
+    slave_tuple = (addr, port)
+
+
+class Master_TCP(socket.socket):
     def __init__(self):
+        super().__init__()
         self.master = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         assert self.master != -1
         self.buffer = BUFFER()
-        self.slaves = {} # PathID:Slave_UDP
+        self.slaves = {}  # PathID:Slave_UDP
 
     def handshake(self, server_tuple: tuple):
         self.master.connect(server_tuple)
@@ -24,34 +31,35 @@ class Master_TCP(socket):
         :param _slave_tuple: tuple
         :type pathid: int
         """
+        # after Server requests to add a slave, master decided that should be _slave_tuple
         assert isinstance(pathid, int)
-        self.slaves[pathid] = Slave_UDP(_slave_tuple)
-        print('debug: PathID {0} is %s ...'.format(_slave_tuple))
+        if pathid not in slave_config.pathid_list:
+            self.slaves[pathid] = Slave_UDP(_slave_tuple, pathid)
+            print('debug: PathID {0} is %s ...'.format(_slave_tuple))
+            segment = SEGMENT(_pTYPES.RESPONSE_TO_ADD_SLAVE, 0, 0, pathid, 0, 0,
+                              '{0},{1}'.format(slave_config.addr, str(
+                                  slave_config.port)))  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
+            self.master.send(segment.encap().encode())
 
-    def slave_run(self,pathid: int):
-        pass
+    def slave_run(self, pathid: int):
+        t = Thread(target=self.slaves[pathid].grabdata, args=self.buffer)
+        t.start()
         # threading
 
 
-class BUFFER(PriorityQueue):
-    def __init__(self):
-        super().__init__()
-        self.buffer = PriorityQueue(-1)
 
-    def put_segemnt(self, segment):
-        """
-
-        :type segment: SEGMENT
-        """
-        isinstance(segment, SEGMENT)
-        self.buffer.put((segment.pkt_seq, segment))
 
 
 #  发送REQUEST并获得tuple 1. 等待获得数据。 2. 计时
 class Slave_UDP:
-    def __init__(self, slave_tuple: tuple):
+    def __init__(self, slave_tuple: tuple, pathid: int):
+        """
+
+        :type pathid: int
+        """
         self.slave = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.slave.bind(slave_tuple)
+        self.pathid = pathid
         print('debug:Binding UDP on %s ...'.format(slave_tuple))
 
     def grabdata(self, buffer: BUFFER):
@@ -68,6 +76,11 @@ class Slave_UDP:
             buffer.put_segemnt(segmnt)
 
 
+m = Master_TCP()
+m.handshake(('127.0.0.1',9880))
+segment = SEGMENT.decap(m.master.recv(65535).decode())
+if segment.pkt_type == _pTYPES.REQUEST_TO_ADD_SLAVE:
+    m.add_slave(0,('127.0.0.1',9881))
 
 # assert master != -1
 # master.connect(('127.0.0.1', 9880))

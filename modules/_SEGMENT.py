@@ -3,7 +3,7 @@ import re
 
 
 class SEGMENT:
-    def __init__(self, pkt_type, pkt_seq, pkt_ack, pkt_ratio, opt, pkt_data):
+    def __init__(self, pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data):
         """
         encapsulating a SEGMENT
         :type pkt_data: str
@@ -11,6 +11,7 @@ class SEGMENT:
         self.pkt_type = int(pkt_type)
         self.pkt_seq = int(pkt_seq)
         self.pkt_ack = int(pkt_ack)
+        self.pathid = int(pathid)
         self.pkt_ratio = float(pkt_ratio)
         self.pkt_datalen = int(len(pkt_data))
         self.pkt_data = str(pkt_data)
@@ -26,6 +27,7 @@ class SEGMENT:
         packet = 'pkt_type:'+ str(self.pkt_type) + '\n'\
                  'pkt_seq:'+ str(self.pkt_seq) + '\n'\
                  'pkt_ack:'+ str(self.pkt_ack) + '\n'\
+                 'pathid:' + str(self.pathid) + '\n'\
                  'pkt_ratio:'+ str(self.pkt_ratio) + '\n'\
                  'option:' + str(self.opt) + '\n'\
                  'pkt_datalen:'+ str(self.pkt_datalen) + '\n' \
@@ -33,19 +35,20 @@ class SEGMENT:
         return str(packet)
 
     @staticmethod
-    def decap(packet: str) -> SEGMENT:
-        _list = re.split(':|\n',packet, 13)
+    def decap(packet: str):
+        _list = re.split(':|\n',packet, 15)
         assert isinstance(_list, list)
         # for count in range(0, 7):
         #     print(_list[2*count])
         assert _list[0] == 'pkt_type'
         assert _list[2] == 'pkt_seq'
         assert _list[4] == 'pkt_ack'
-        assert _list[6] == 'pkt_ratio'
-        assert _list[8] == 'option'
-        assert _list[10] == 'pkt_datalen'
-        assert _list[11] == str(len(_list[13]))
-        assert _list[12] == 'pkt_data'
+        assert _list[6] == 'pathid'
+        assert _list[8] == 'pkt_ratio'
+        assert _list[10] == 'option'
+        assert _list[12] == 'pkt_datalen'
+        assert _list[13] == str(len(_list[15]))
+        assert _list[14] == 'pkt_data'
         # print('HEADER:\npkt_type:' + _list[0] + '\n' \
         # 'pkt_seq:' + _list[2] + '\n' \
         # 'pkt_ack:' + _list[4] + '\n' \
@@ -53,7 +56,7 @@ class SEGMENT:
         # 'option:' + _list[8] + '\n' \
         # 'pkt_datalen:' + _list[10] + '\n' \
         #  'pkt_data:' + _list[12] + '\n')
-        segment = SEGMENT(_list[1], _list[3],_list[5],_list[7], _list[9], _list[13])
+        segment = SEGMENT(_list[1], _list[3],_list[5],_list[7], _list[9], _list[13], _list[15])
 
         return segment
 
