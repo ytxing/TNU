@@ -1,6 +1,7 @@
 #from ctypes import c_ulong, c_ulonglong, c_float
 import re
 
+
 class SEGMENT:
     def __init__(self, pkt_type, pkt_seq, pkt_ack, pkt_ratio, opt, pkt_data):
         """
@@ -32,7 +33,7 @@ class SEGMENT:
         return str(packet)
 
     @staticmethod
-    def decap(packet):
+    def decap(packet: str) -> SEGMENT:
         _list = re.split(':|\n',packet, 13)
         assert isinstance(_list, list)
         # for count in range(0, 7):
