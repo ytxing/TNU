@@ -23,7 +23,7 @@ class SEGMENT:
         #          'option:' + self.opt + '\n'\
         #          'pkt_datalen:'+ self.pkt_datalen + '\n')
 
-    def encap(self):
+    def encap(self) -> str:
         packet = 'pkt_type:'+ str(self.pkt_type) + '\n'\
                  'pkt_seq:'+ str(self.pkt_seq) + '\n'\
                  'pkt_ack:'+ str(self.pkt_ack) + '\n'\

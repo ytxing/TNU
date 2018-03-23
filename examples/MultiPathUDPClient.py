@@ -46,6 +46,9 @@ class Master_TCP(socket.socket):
         t.start()
         # threading
 
+    def showbuff(self):
+        print(self.buffer)
+
 
 
 
@@ -81,6 +84,8 @@ m.handshake(('127.0.0.1',9880))
 segment = SEGMENT.decap(m.master.recv(65535).decode())
 if segment.pkt_type == _pTYPES.REQUEST_TO_ADD_SLAVE:
     m.add_slave(0,('127.0.0.1',9881))
+
+m.slave_run(0)
 
 # assert master != -1
 # master.connect(('127.0.0.1', 9880))
