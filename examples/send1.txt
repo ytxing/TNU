@@ -1,0 +1,92 @@
+每天学点Python之bytes
+Python中的字节码用b'xxx'的形式表示。x可以用字符表示，也可以用ASCII编码形式\xnn表示，nn从00-ff(十六进制)共256种字符。
+
+基本操作
+下面列举一下字节的基本操作，可以看出来它和字符串还是非常相近的：
+
+In[40]: b = b"abcd\x64"
+In[41]: b
+Out[41]: b'abcdd'
+In[42]: type(b)
+Out[42]: bytes
+In[43]: len(b)
+Out[43]: 5
+In[44]: b[4]
+Out[44]: 100    # 100用十六进制表示就是\x64
+1
+2
+3
+4
+5
+6
+7
+8
+9
+如果想要修改一个字节串中的某个字节，不能够直接修改，需要将其转化为bytearray后再进行修改：
+
+In[46]: barr = bytearray(b)
+In[47]: type(barr)
+Out[47]: bytearray
+In[48]: barr[0] = 110
+In[49]: barr
+Out[49]: bytearray(b'nbcdd')
+1
+2
+3
+4
+5
+6
+字节与字符的关系
+上面也提到字节跟字符很相近，其实它们是可以相互转化的。字节通过某种编码形式就可以转化为相应的字符。字节通过encode()方法传入编码方式就可以转化为字符，而字符通过decode()方法就可以转化为字节：
+
+In[50]: s = "人生苦短，我用Python"
+In[51]: b = s.encode('utf-8')
+In[52]: b
+Out[52]: b'\xe4\xba\xba\xe7\x94\x9f\xe8\x8b\xa6\xe7\x9f\xad\xef\xbc\x8c\xe6\x88\x91\xe7\x94\xa8Python'
+In[53]: c = s.encode('gb18030')
+In[54]: c
+Out[54]: b'\xc8\xcb\xc9\xfa\xbf\xe0\xb6\xcc\xa3\xac\xce\xd2\xd3\xc3Python'
+In[55]: b.decode('utf-8')
+Out[55]: '人生苦短，我用Python'
+In[56]: c.decode('gb18030')
+Out[56]: '人生苦短，我用Python'
+In[57]: c.decode('utf-8')
+Traceback (most recent call last):
+    exec(code_obj, self.user_global_ns, self.user_ns)
+  File "<ipython-input-57-8b50aa70bce9>", line 1, in <module>
+    c.decode('utf-8')
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc8 in position 0: invalid continuation byte
+In[58]: b.decode('gb18030')
+Out[58]: '浜虹敓鑻︾煭锛屾垜鐢≒ython'
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+我们可以看到用不同的编码方式解析出来的字符和字节的方式是完全不同，如果编码和解码用了不同的编码方式，就会产生乱码，甚至转换失败。因为每种编码方式包含的字节种类数目不同，如上例中的\xc8就超出了utf-8的最大字符。
+
+应用
+举个最简单的例子，我要爬取一个网页的内容，现在来爬取用百度搜索Python时返回的页面，百度用的是utf-8编码格式，如果不对返回结果解码，那它就是一个超级长的字节串。而进行正确解码后就可以显示一个正常的html页面。
+
+import urllib.request
+
+url = "http://www.baidu.com/s?ie=utf-8&wd=python"
+page = urllib.request.urlopen(url)
+mybytes = page.read()
+encoding = "utf-8"
+print(mybytes.decode(encoding))
+page.close()S

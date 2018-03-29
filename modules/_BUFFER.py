@@ -2,11 +2,10 @@ from queue import PriorityQueue
 from TNU.modules._SEGMENT import SEGMENT
 
 
-
 class BUFFER(PriorityQueue):
     def __init__(self):
         super().__init__()
-        self.buffer = PriorityQueue(-1)
+        self.buffer = PriorityQueue()
 
     def put_segment_and_encap(self, segment):
         """
@@ -16,7 +15,7 @@ class BUFFER(PriorityQueue):
         isinstance(segment, SEGMENT)
         self.buffer.put((segment.pkt_seq, SEGMENT.encap(segment)))
 
-    def put_raw_segment(self,segment: SEGMENT):
+    def put_raw_segment(self, segment: SEGMENT):
         """
 
          :type segment: SEGMENT
