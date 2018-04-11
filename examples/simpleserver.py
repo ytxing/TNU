@@ -1,6 +1,6 @@
 import socket
-from TNU.modules._SEGMENT import SEGMENT
-from TNU.modules._STATES import _pTYPES
+from TNU.modules.xSEGMENT import SEGMENT
+from TNU.modules.xSTATES import pTYPES
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 buff = []
@@ -18,11 +18,11 @@ while True:
     # s.sendto(packet.encode(), source)
 
     # i += 1
-    if segmnt.pkt_type == _pTYPES.END:
+    if segmnt.pkt_type == pTYPES.END:
         buff.append(segmnt.pkt_data)
         break
     else:
-        if segmnt.pkt_type == _pTYPES.CHUNK:  # ???
+        if segmnt.pkt_type == pTYPES.CHUNK:  # ???
             buff.append(segmnt.pkt_data)
 print('break')
 buffer = "".join(buff)

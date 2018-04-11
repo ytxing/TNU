@@ -1,13 +1,14 @@
+# -*- coding: utf-8 -*-
 import socket
-from TNU.modules._SEGMENT import SEGMENT
-from TNU.modules._STATES import _pTYPES
-from TNU.modules._BUFFER import BUFFER
-from threading import Thread, Event
+from TNU.modules.xBUFFER import BUFFER
+from TNU.modules.xSEGMENT import SEGMENT
+from TNU.modules.xSTATES import pTYPES
+from threading import Thread
 import time
 
 
 class local_information:
-    addr = '127.0.0.1'
+    addr = '10.0.0.2'
     port = 9881
     pathid_list = []
     slave_tuple = (addr, port)
@@ -32,6 +33,7 @@ class Master_TCP(socket.socket):
         self.slave_offset = 1
 
     def handshake(self, server_tuple: tuple):
+        self.master.bind(('10.0.0.2', 9880))
         self.master.connect(server_tuple)
         print("debug: Connecting to {0} ...".format(server_tuple))
 
@@ -47,12 +49,13 @@ class Master_TCP(socket.socket):
         if not self.slaves.__contains__(pathid):
             self.slaves[pathid] = slave_config(_slave_tuple[0], _slave_tuple[1],
                                                socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
-            this_slave: slave_config = self.slaves[pathid]
-            this_slave.sock.bind(_slave_tuple)
+            this_slave = self.slaves[pathid]
+            this_slave.sock.bind(('10.0.{0}.{1}'.format(self.slave_offset, 2 + self.slave_offset * 2),
+                                  9880))  # binding on slave tuple
             print('debug: PathID {0} is {1!s} ...'.format(pathid, _slave_tuple))
-            segment = SEGMENT(_pTYPES.RESPONSE_TO_ADD_SLAVE, 0, 0, pathid, 0, 0,
-                              '{0},{1}'.format(this_slave.addr, str(
-                                  this_slave.port)))  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
+            segment = SEGMENT(pTYPES.RESPONSE_TO_ADD_SLAVE, 0, 0, pathid, 0, 0,
+                              '10.0.{0}.{1},{2}'.format(self.slave_offset, (2 + self.slave_offset * 2), str(
+                                  9880)))  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
             self.master.send(segment.encap().encode())
         else:
             print('debug: {0} has already existed...'.format(pathid))
@@ -68,17 +71,17 @@ class Master_TCP(socket.socket):
     def grabdata(self, pathid: int, buffer: BUFFER):
         assert isinstance(buffer, BUFFER)
         if self.slaves.__contains__(pathid):
-            this_slave: slave_config = self.slaves[pathid]
+            this_slave = self.slaves[pathid]
             while True:
-                print('debug: waiting for packet at Path{0}...'.format(pathid))
+                print('debug: waiting for packet at Path{0}...'.format(this_slave.sock.getsockname()))
                 data, source = this_slave.sock.recvfrom(65535)
-                print('debug: got a packetat Path{0}...'.format(pathid))
+                print('debug: got a packet at Path{0}...'.format(pathid))
                 this_segment = SEGMENT.decap(
                     data.decode())  # decap the data, the data is encoded and need to be decoded
                 this_segment.showseg('')
                 buffer.put((this_segment.pkt_seq, this_segment.encap()))
                 # buffer.put_segment_and_encap(this_segment)
-                if this_segment.pkt_type == _pTYPES.END or this_segment.pkt_type == _pTYPES.END_OF_SLAVE:
+                if this_segment.pkt_type == pTYPES.END or this_segment.pkt_type == pTYPES.END_OF_SLAVE:
                     break
 
     def waiting_for_order(self):
@@ -87,21 +90,23 @@ class Master_TCP(socket.socket):
             recv_packet = self.master.recv(65535).decode()
             print(recv_packet)
             segment = SEGMENT.decap(recv_packet)
-            if segment.pkt_type == _pTYPES.REQUEST_TO_ADD_SLAVE:
+            if segment.pkt_type == pTYPES.REQUEST_TO_ADD_SLAVE:
                 print('debug: sending message to add slave...')
-                self.add_slave(segment.pathid, ('127.0.0.1', 9880 + segment.pathid))
+                self.add_slave(segment.pathid, ('10.0.{0}.{1},{2}'.format(self.slave_offset, 1 + self.slave_offset * 2, 9880)))
                 self.slave_offset += 1
             else:
-                if segment.pkt_type == _pTYPES.KILL_MASTER:
-                    segment = SEGMENT(_pTYPES.KILL_MASTER, 0, 0, 0, 0, 0,
+                if segment.pkt_type == pTYPES.KILL_MASTER:
+                    segment = SEGMENT(pTYPES.KILL_MASTER, 0, 0, 0, 0, 0,
                                       '')  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
                     send_packet = segment.encap()  # 打包并发出
                     self.master.send(send_packet.encode())
                     print('debug: Long live the Soviet!!!')
                     break
             if self.slave_offset == 3:
-                     print('debug: getting outta waiting_for_order()..')
-                     break  # 暂时先用着 还没搞定怎么结束
+                print('debug: getting outta waiting_for_order()..')
+                break  # 暂时先用着 还没搞定怎么结束
+            if recv_packet == '':
+                break
         print('debug: No longer waiting, Master is dead...')
 
 
@@ -132,7 +137,7 @@ class Master_TCP(socket.socket):
 
 
 m = Master_TCP()
-m.handshake(('127.0.0.1', 9880))
+m.handshake(('10.0.0.1', 9880))  # Server ip
 t_master = Thread(target=m.waiting_for_order, daemon=True)
 t_master.start()
 t_master.join()
@@ -146,16 +151,18 @@ for pathid in pathids:
 for slave in slave_post_office:
     slave.start()
 time.sleep(3)
-#for slave in slave_post_office:
- #   slave.join()
-#m.grabdata(1, m.buffer)
+for slave in slave_post_office:
+    slave.join()
+# m.grabdata(1, m.buffer)
 seq = 0
+
 while not m.buffer.empty():
     this_seq, this_segment = m.buffer.get()
     if seq != this_seq:
         print('should be {0} but {1}'.format(seq, this_seq))
     seq += 1
     data_segment.append(SEGMENT.decap(this_segment).pkt_data)
+print('debug: {}packets in total!!!'.format(seq))
 
 data = str.join('', data_segment)
 with open('recv.txt', 'w') as file:
