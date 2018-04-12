@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #from ctypes import c_ulong, c_ulonglong, c_float
 import re
 
@@ -37,9 +38,8 @@ class SEGMENT:
     @staticmethod
     def decap(packet: str):
         _list = re.split(':|\n',packet, 15)
+        print('debug: decaping\n{}'.format(packet))
         assert isinstance(_list, list)
-        # for count in range(0, 7):
-        #     print(_list[2*count])
         assert _list[0] == 'pkt_type'
         assert _list[2] == 'pkt_seq'
         assert _list[4] == 'pkt_ack'
@@ -49,34 +49,24 @@ class SEGMENT:
         assert _list[12] == 'pkt_datalen'
         assert _list[13] == str(len(_list[15]))
         assert _list[14] == 'pkt_data'
-        # print('HEADER:\npkt_type:' + _list[0] + '\n' \
-        # 'pkt_seq:' + _list[2] + '\n' \
-        # 'pkt_ack:' + _list[4] + '\n' \
-        # 'pkt_ratio:' + _list[6] + '\n' \
-        # 'option:' + _list[8] + '\n' \
-        # 'pkt_datalen:' + _list[10] + '\n' \
-        #  'pkt_data:' + _list[12] + '\n')
-        segment = SEGMENT(_list[1], _list[3],_list[5],_list[7], _list[9], _list[13], _list[15])
+        segment = SEGMENT(_list[1], _list[3],_list[5],_list[7], _list[9], _list[11], _list[15])
 
         return segment
 
     def showseg(self, flag):
-        if(flag=='all'):
+        if flag == 'all':
             print('HEADER:\npkt_type:'+ str(self.pkt_type) + '\n'\
                  'pkt_seq:'+ str(self.pkt_seq) + '\n'\
                  'pkt_ack:'+ str(self.pkt_ack) + '\n'\
                  'pkt_ratio:'+ str(self.pkt_ratio) + '\n'\
+                'pathid:'+ str(self.pathid) + '\n'\
                  'option:' + str(self.opt) + '\n'\
                  'pkt_datalen:'+ str(self.pkt_datalen) + '\n' \
-                 'DATA:\npkt_data:'+ self.pkt_data)
+                 'DATA:\npkt_data:'+ str(self.pkt_data))
         else:
             print('HEADER:\npkt_type:'+ str(self.pkt_type) + '\n'\
-                 'pkt_seq:'+ str(self.pkt_seq) + '\n'\
-                 'pkt_ack:'+ str(self.pkt_ack) + '\n'\
-                 'pkt_ratio:'+ str(self.pkt_ratio) + '\n'\
-                 'option:' + str(self.opt) + '\n'\
-                 'pkt_datalen:'+ str(self.pkt_datalen) + '\n' \
-                 'pkt_data:\n' )
+                 'pkt_seq:'+ str(self.pkt_seq) + '\n' \
+                                                 'pathid:' + str(self.pathid))
 
 
 

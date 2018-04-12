@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from queue import PriorityQueue
 from TNU.modules.xSEGMENT import SEGMENT
 
@@ -5,7 +6,7 @@ from TNU.modules.xSEGMENT import SEGMENT
 class BUFFER(PriorityQueue):
     def __init__(self):
         super().__init__()
-        self.buffer = PriorityQueue(-1)
+        self.buffer = PriorityQueue()
 
     def put_segment_and_encap(self, segment):
         """
