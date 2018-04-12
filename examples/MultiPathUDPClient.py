@@ -171,6 +171,10 @@ with open('recv.txt', 'w') as file:
 
 print('done!')
 # m.slave_run(0)
+<<<<<<< HEAD
+=======
+
+>>>>>>> linux_version0.1
 # assert master != -1
 # master.connect(('127.0.0.1', 9880))
 # master.send('GET /data.txt')
