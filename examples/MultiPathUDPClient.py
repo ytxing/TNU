@@ -1,7 +1,7 @@
 import socket
-from TNU.modules._SEGMENT import SEGMENT
-from TNU.modules._STATES import _pTYPES
-from TNU.modules._BUFFER import BUFFER
+from TNU.modules.xSEGMENT import SEGMENT
+from TNU.modules.xSTATES import pTYPES
+from TNU.modules.xBUFFER import BUFFER
 from threading import Thread, Event
 import time
 
@@ -36,7 +36,7 @@ class Master_TCP(socket.socket):
         if pathid not in slave_config.pathid_list:
             self.slaves[pathid] = Slave_UDP(_slave_tuple, pathid)
             print('debug: PathID {0} is %s ...'.format(_slave_tuple))
-            segment = SEGMENT(_pTYPES.RESPONSE_TO_ADD_SLAVE, 0, 0, pathid, 0, 0,
+            segment = SEGMENT(pTYPES.RESPONSE_TO_ADD_SLAVE, 0, 0, pathid, 0, 0,
                               '{0},{1}'.format(slave_config.addr, str(
                                   slave_config.port)))  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
             self.master.send(segment.encap().encode())
@@ -82,7 +82,7 @@ class Slave_UDP:
 m = Master_TCP()
 m.handshake(('127.0.0.1',9880))
 segment = SEGMENT.decap(m.master.recv(65535).decode())
-if segment.pkt_type == _pTYPES.REQUEST_TO_ADD_SLAVE:
+if segment.pkt_type == pTYPES.REQUEST_TO_ADD_SLAVE:
     m.add_slave(0,('127.0.0.1',9881))
 
 m.slave_run(0)

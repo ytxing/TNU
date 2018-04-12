@@ -1,7 +1,7 @@
 import socket
-from TNU.modules._SEGMENT import SEGMENT
-from TNU.modules._STATES import _pTYPES
-from TNU.modules._BUFFER import BUFFER
+from TNU.modules.xSEGMENT import SEGMENT
+from TNU.modules.xSTATES import pTYPES
+from TNU.modules.xBUFFER import BUFFER
 from threading import Thread, Event
 import time
 
@@ -24,7 +24,9 @@ class Master_TCP(socket.socket):
         super().__init__()
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         assert self.s != -1
-        self.buffer = BUFFER()  # 里面是打包好的包，SEGMENT类型，便于后面加pathid和seq
+        self.buffer = BUFFER()  # 里面是打包好的包，SEGMENT类型，便于后面加pathid和seq，这个是备份
+        self.buffer_to_send = BUFFER()  # 这个是要发送的
+        self.retrans_seq = []  # 要重传的包
         self.slaves = {}  # PathID:slave_config
         self.slave_start_event = {}
         self.slave_close_event = {}
@@ -37,14 +39,14 @@ class Master_TCP(socket.socket):
         print("debug: Accepted connection from {0} ...".format(client_addr))
 
     def request_to_add_slave(self):
-        segment = SEGMENT(_pTYPES.REQUEST_TO_ADD_SLAVE, 0, 0, 1, 0, 0,
+        segment = SEGMENT(pTYPES.REQUEST_TO_ADD_SLAVE, 0, 0, 1, 0, 0,
                           str(local.address))  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
         send_packet = segment.encap()  # 打包并发出
         self.master.send(send_packet.encode())
         print('debug: Sending request to add a slave...')
         recv_packet = self.master.recv(65535)  # 得到数据包
         recv_segment = SEGMENT.decap(recv_packet.decode())
-        if recv_segment.pkt_type == _pTYPES.RESPONSE_TO_ADD_SLAVE:
+        if recv_segment.pkt_type == pTYPES.RESPONSE_TO_ADD_SLAVE:
             slave_tuple = (
                 recv_segment.pkt_data.split(',')[0], int(recv_segment.pkt_data.split(',')[1]))  # IP,port,socket
             print('debug: Now slave {0} has been added...'.format(slave_tuple))
@@ -85,7 +87,7 @@ with open('send.txt','r') as file:
 raw_buffer = []
 seq = 0
 for i in range(0, len(raw_file), 60000):
-    m.buffer.put_raw_segment(SEGMENT(_pTYPES.CHUNK, seq, 0, 0, 1, 0, raw_file[i: i+60000])) #  没有封装成str
+    m.buffer.put_raw_segment(SEGMENT(pTYPES.CHUNK, seq, 0, 0, 1, 0, raw_file[i: i + 60000])) #  没有封装成str
     seq += 1
     raw_buffer.append(raw_file[i: i+60000])
 

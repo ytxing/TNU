@@ -1,4 +1,4 @@
-class _pTYPES:
+class pTYPES:
     CHUNK = 0
     END = 1
     REQUEST_TO_ADD_SLAVE = 2
