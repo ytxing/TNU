@@ -21,8 +21,20 @@ class slave_config:
         self.slave_tuple = (addr, port)
 
 
-class local(tuple):
-    address = ('10.0.0.1', 9880)
+class server_address:
+    addr_dict = {
+        0: ('10.0.0.1', 9881),
+        1: ('10.0.0.1', 9883),
+        2: ('10.0.0.1', 9885)
+    }
+
+
+class client_address:
+    addr_dict = {
+        0: ('10.0.0.1', 9882),
+        1: ('10.0.0.1', 9884),
+        2: ('10.0.0.1', 9886)
+    }
 
 
 class Master_TCP(socket.socket):
@@ -40,14 +52,15 @@ class Master_TCP(socket.socket):
         self.master = None
 
     def wait_for_handshake(self):
-        self.s.bind(local.address)
+        self.s.bind(server_address.addr_dict[0])
         self.s.listen(1)
         self.master, client_addr = self.s.accept()
         print("debug: Accepted connection from {0} ...".format(client_addr))
 
     def request_to_add_slave(self):
         segment = SEGMENT(pTYPES.REQUEST_TO_ADD_SLAVE, 0, 0, self.slave_offset, 0, 0,
-                          str(local.address))  # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
+                          str(server_address.addr_dict[0]))
+        # pkt_type, pkt_seq, pkt_ack, pathid, pkt_ratio, opt, pkt_data
         send_packet = segment.encap()  # 打包并发出
         self.master.send(send_packet.encode())
         print('debug: Sending request to add a slave...')
@@ -55,13 +68,14 @@ class Master_TCP(socket.socket):
         print('debug: response received...')
         recv_segment = SEGMENT.decap(recv_packet.decode())
         if recv_segment.pkt_type == pTYPES.RESPONSE_TO_ADD_SLAVE:
-            slave_tuple = (
-                recv_segment.pkt_data.split(',')[0], int(recv_segment.pkt_data.split(',')[1]))  # IP,port,socket
+            slave_tuple = (  # 从client获得client的本地地址
+                recv_segment.pkt_data.split(',')[0].strip('\'').strip('\''), int(recv_segment.pkt_data.split(',')[1]))
+            # IP,port,socket
             print('debug: Now slave {0} has been added...'.format(slave_tuple))
             self.slaves[segment.pathid] = slave_config(slave_tuple[0], slave_tuple[1],
                                                        socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
             this_slave = self.slaves[segment.pathid]
-            this_slave.sock.bind(('10.0.{0}.{1}'.format(self.slave_offset, 1 + self.slave_offset * 2), 9880))
+            this_slave.sock.bind(server_address.addr_dict[segment.pathid])
             self.slave_start_event[segment.pathid] = Event()  # 等待slave开始运行后再进行操作
             self.slave_offset += 1
 
@@ -119,7 +133,6 @@ class Master_TCP(socket.socket):
                     print('debug: Client done...')
                     break
 
-
     # def slave_run(self, pathid: int):  # meixiehao!!
     #     t = Thread(target=self.slaves[pathid].send_data_through_slave, args=self.buffer)
     #     t.start()
@@ -133,6 +146,15 @@ m.request_to_add_slave()
 print(m.slaves)
 m.request_to_add_slave()
 print(m.slaves)
+segment = SEGMENT(pTYPES.NO_MORE_SLAVE, 0, 0, 0, 1, 0, '')
+m.master.send(segment.encap().encode())
+
+pkt = m.master.recv(65535).decode()
+segment = SEGMENT.decap(pkt)
+if segment.pkt_type == pTYPES.I_WANT_DATA:
+    pass
+else:
+    print('debug: NO Data wanted..')
 
 with open('send.txt', 'r') as file:
     raw_file = str(file.read())

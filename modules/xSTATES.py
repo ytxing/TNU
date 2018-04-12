@@ -10,3 +10,5 @@ class pTYPES:
     MASTER_HEARTBEAT = 7
     ACK = 8
     DONE_TRANSMISSION = 9
+    I_WANT_DATA = 10
+    NO_MORE_SLAVE = 11
