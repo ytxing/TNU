@@ -42,12 +42,6 @@ class Master_TCP(socket.socket):
         super().__init__()
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         assert self.s != -1
-<<<<<<< HEAD
-        self.buffer = BUFFER()  # 里面是打包好的包，SEGMENT类型，便于后面加pathid和seq，这个是备份
-        self.buffer_to_send = BUFFER()  # 这个是要发送的
-        self.retrans_seq = []  # 要重传的包
-=======
->>>>>>> linux_version0.1
         self.buffer_to_send = BUFFER()  # 里面是打包好的包，SEGMENT类型，便于后面加pathid和seq，这个buffer是要发送的
         self.buffer = BUFFER()  # 这个buffer存放了所有的包，用于重传
         self.slaves = {}  # PathID:slave_config
