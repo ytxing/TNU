@@ -102,9 +102,12 @@ class Master_TCP(socket.socket):
                     self.master.send(send_packet.encode())
                     print('debug: Long live the Soviet!!!')
                     break
-            if self.slave_offset == 3:
-                print('debug: getting outta waiting_for_order()..')
-                break  # 暂时先用着 还没搞定怎么结束
+                else:
+                    if segment.pkt_type == pTYPES.MASTER_HEARTBEAT:
+                        print('Master is  alive!')
+                    else:
+                        pass
+
             if recv_packet == '':
                 break
         print('debug: No longer waiting, Master is dead...')
