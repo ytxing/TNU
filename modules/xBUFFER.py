@@ -7,6 +7,9 @@ class BUFFER(PriorityQueue):
     def __init__(self):
         super().__init__()
         self.buffer = PriorityQueue()
+        # self.max_sequence = 0  # 如果max sequence + 1 == this_packet.sequence
+        self.total_sequence = 0
+        self.ratio = 0
 
     def put_segment_and_encap(self, segment):
         """

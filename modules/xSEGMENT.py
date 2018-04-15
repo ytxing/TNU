@@ -38,7 +38,7 @@ class SEGMENT:
     @staticmethod
     def decap(packet: str):
         _list = re.split(':|\n',packet, 15)
-        print('debug: decaping\n{}'.format(packet))
+        # print('debug: decaping\n{}'.format(packet))
         assert isinstance(_list, list)
         assert _list[0] == 'pkt_type'
         assert _list[2] == 'pkt_seq'
@@ -47,7 +47,7 @@ class SEGMENT:
         assert _list[8] == 'pkt_ratio'
         assert _list[10] == 'option'
         assert _list[12] == 'pkt_datalen'
-        assert _list[13] == str(len(_list[15]))
+        # assert _list[13] == str(len(_list[15]))
         assert _list[14] == 'pkt_data'
         segment = SEGMENT(_list[1], _list[3],_list[5],_list[7], _list[9], _list[11], _list[15])
 

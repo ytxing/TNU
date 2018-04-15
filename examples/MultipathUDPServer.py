@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 import socket
-from queue import Queue
+from queue import PriorityQueue, Queue
 from TNU.modules.xSEGMENT import SEGMENT
 from TNU.modules.xSTATES import pTYPES
 from TNU.modules.xBUFFER import BUFFER
 from threading import Thread, Event
 import time
+import random
+
+random.seed()
 
 
 class count_pkt:
@@ -17,7 +20,7 @@ class slave_config:
         self.addr = addr
         self.port = 9880
         self.sock = sock
-        self.ready_to_send = []
+        self.ready_to_send = PriorityQueue()
         self.slave_tuple = (addr, port)
 
 
@@ -43,11 +46,11 @@ class Master_TCP(socket.socket):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         assert self.s != -1
         self.buffer_to_send = BUFFER()  # 里面是打包好的包，SEGMENT类型，便于后面加pathid和seq，这个buffer是要发送的
-        self.buffer = BUFFER()  # 这个buffer存放了所有的包，用于重传
+        self.buffer = {}  # 这个buffer存放了所有的包，用于重传
         self.slaves = {}  # PathID:slave_config
         self.slave_start_event = {}
-        self.slave_close_event = {}
-        self.retrans_seq = []
+        self.slave_close_event = Event()
+        self.retrans_seq = Queue()
         self.slave_offset = 1
         self.master = None
 
@@ -93,45 +96,80 @@ class Master_TCP(socket.socket):
             sock.close()
 
     def send_data_through_slave(self, pathid, ready_to_send):
+        time.sleep(1)
         if self.slaves.__contains__(pathid):
             this_slave = self.slaves[pathid]
             self.slave_start_event[pathid].wait()  # 等待slave开始运行后再进行操作
-            while ready_to_send:  # how to stop
-                send_data = this_slave.ready_to_send.pop(0)
-                time.sleep(0.05)
+            while not self.slave_close_event.isSet():  # Event 结束信号没有set
+                this_seq, send_data = this_slave.ready_to_send.get()
+                time.sleep(0.6)
+                t = random.randint(1, 100)
+                if t < 50:
+                    print('debug: random loss {} < 50'.format(t))
+                    continue
+                print('debug: random loss {} > 50'.format(t))
                 this_slave.sock.sendto(send_data.encode(), this_slave.slave_tuple)
                 print(
-                    'debug: slave {0} sends a packet {1} -> {2}...'.format(pathid, this_slave.sock.getsockname(),
-                                                                           this_slave.slave_tuple))
+                    'debug: slave {0} sends packet{3}: {1} -> {2}...'.format(pathid, this_slave.sock.getsockname(),
+                                                                         this_slave.slave_tuple, this_seq))
 
-    def feed_slave(self):
+    def pre_feed_slave(self):
         count = 0
-        while not self.buffer_to_send.empty():
+        while not self.buffer_to_send.empty():  # 这里还是要event才行 现在先用着
+            # while True:
             for pathid, slave_conf in self.slaves.items():
-                if self.slave_start_event[pathid].isSet():  # 该子流是否已打开
+                if self.slave_start_event[pathid].isSet() and \
+                        not self.slave_close_event.isSet():  # 该子流是否已打开且未关闭
                     this_slave = self.slaves[pathid]
                     # 是否还有没有feed的数据？
                     if not self.buffer_to_send.empty():
                         this_seq, raw_segment = self.buffer_to_send.get()
-                    if self.buffer_to_send.qsize() < self.slaves.__len__():  # buffer大小小于slaves队列长度
-                        raw_segment.pkt_type = pTYPES.END_OF_SLAVE
-                    raw_segment.pathid = pathid
-                    this_slave.ready_to_send.append(raw_segment.encap())
+                        raw_segment.pathid = pathid
+                        this_slave.ready_to_send.put((raw_segment.pkt_seq, raw_segment.encap()))
                     count += 1
-        count_pkt.count = count
 
-    def waiting_for_ack(self):
+    # noinspection PyShadowingNames
+    def feed_slave_to_retransmission(self):
+        while not self.slave_close_event.is_set():
+            for pathid, slave_conf in self.slaves.items():
+                if self.slave_start_event[pathid].isSet() and \
+                        not self.slave_close_event.isSet():  # 该子流是否已打开且未关闭
+                    this_slave = self.slaves[pathid]
+                    # 是否还有没有feed的数据？
+                    if not self.buffer_to_send.empty():
+                        this_seq, raw_segment = self.buffer_to_send.get()
+                        print('debug: feed_slave_to_retransmission seq:{} pathid{}...'.format(this_seq, pathid))
+                        raw_segment.pathid = pathid
+                        this_slave.ready_to_send.put((raw_segment.pkt_seq, raw_segment.encap()))
+
+    def wait_for_ack(self):
         while True:
             print('debug: Server is waiting for acks...')
             ack_pkt = self.master.recv(65535).decode()
             ack_segment = SEGMENT.decap(ack_pkt)
             if ack_segment.pkt_type == pTYPES.ACK:  # 这里要给一个mailbox发送pkt_seq，然后重传这些包
-                self.retrans_seq.append(ack_segment.pkt_ack)
+                self.retrans_seq.put(int(ack_segment.pkt_ack) + 1)  # 重传ACK后面一个包
                 print('debug: Got a ACK{}'.format(ack_segment.pkt_ack))
             else:
                 if ack_segment.pkt_type == pTYPES.DONE_TRANSMISSION:
-                    print('debug: Client done...')
+                    print('debug: Client done...\nClosing slaves...')
+                    self.slave_close_event.set()  # 设置子流结束标志，停止子流发送send through slaves
                     break
+
+    def retransmission(self):
+        while not self.slave_close_event.isSet():
+            too_much_retrans = {}
+            time.sleep(0.02)
+            seq_to_trans = self.retrans_seq.get()
+            if too_much_retrans.__contains__(seq_to_trans):
+                too_much_retrans[seq_to_trans] += 1
+            else:
+                too_much_retrans[seq_to_trans] = 0
+            if too_much_retrans[seq_to_trans] % 5 == 0:
+                print('debug: Server is retransmitting data{} to buffer_to_send...'.format(seq_to_trans))
+                self.buffer_to_send.put((seq_to_trans, self.buffer[seq_to_trans]))
+            else:
+                print('debug: to much retrans of{}...'.format(seq_to_trans))
 
     # def slave_run(self, pathid: int):  # meixiehao!!
     #     t = Thread(target=self.slaves[pathid].send_data_through_slave, args=self.buffer)
@@ -152,28 +190,31 @@ m.master.send(segment.encap().encode())
 pkt = m.master.recv(65535).decode()
 segment = SEGMENT.decap(pkt)
 if segment.pkt_type == pTYPES.I_WANT_DATA:
-    pass
+    with open('send.txt', 'r') as file:
+        raw_file = str(file.read())
+    seq = 0
+    total_seq = 0
+    for i in range(0, len(raw_file), 5000):
+        if i + 5000 < len(raw_file):
+            this_segment = SEGMENT(pTYPES.CHUNK, seq, 0, 0, 1, 0, raw_file[i: i + 5000])
+            m.buffer_to_send.put((this_segment.pkt_seq, this_segment))
+            m.buffer[this_segment.pkt_seq] = this_segment
+        else:
+            this_segment = SEGMENT(pTYPES.END, seq, 0, 0, 1, 0, raw_file[i: i + 5000])
+            m.buffer_to_send.put((this_segment.pkt_seq, this_segment))
+            m.buffer[this_segment.pkt_seq] = this_segment
+            total_seq = this_segment.pkt_seq
+        # m.buffer.put_segment_and_encap(SEGMENT(_pTYPES.CHUNK, seq, 0, 0, 1, 0, raw_file[i: i + 60000]))  # 没有封装成str
+        seq += 1
+    segment = SEGMENT(pTYPES.CHUNK_INFO, total_seq, 0, 0, 1, 0, '')
+    packet = segment.encap()
+    m.master.send(packet.encode())
 else:
     print('debug: NO Data wanted..')
 
-with open('send.txt', 'r') as file:
-    raw_file = str(file.read())
-seq = 0
-for i in range(0, len(raw_file), 5000):
-    if i + 5000 < len(raw_file):
-        this_segment = SEGMENT(pTYPES.CHUNK, seq, 0, 0, 1, 0, raw_file[i: i + 5000])
-        m.buffer_to_send.put((this_segment.pkt_seq, this_segment))
-        m.buffer.put((this_segment.pkt_seq, this_segment))
-    else:
-        this_segment = SEGMENT(pTYPES.END, seq, 0, 0, 1, 0, raw_file[i: i + 5000])
-        m.buffer_to_send.put((this_segment.pkt_seq, this_segment))
-        m.buffer.put((this_segment.pkt_seq, this_segment))
-    # m.buffer.put_segment_and_encap(SEGMENT(_pTYPES.CHUNK, seq, 0, 0, 1, 0, raw_file[i: i + 60000]))  # 没有封装成str
-    seq += 1
-
 m.slave_start_event[1].set()
 m.slave_start_event[2].set()
-m.feed_slave()
+m.pre_feed_slave()
 pathids = list(m.slaves.keys())
 slave_post_office = []
 start = time.time()
@@ -182,13 +223,21 @@ for pathid in pathids:
     t_send_through_slave = Thread(target=m.send_data_through_slave, args=(pathid, salve_buffer))
     slave_post_office.append(t_send_through_slave)
 
-# 增加一个线程 用于接收ack
+# done 增加一个线程 用于接收ack done
+t_wait_for_ack = Thread(target=m.wait_for_ack)
+t_wait_for_ack.start()
 # 再增加一个线程 用于向ready to send里面增加包
-
+t_retransmission = Thread(target=m.retransmission)
+t_retransmission.start()
+t_feed_slave_to_retransmission = Thread(target=m.feed_slave_to_retransmission)
+t_feed_slave_to_retransmission.start()
 for slave in slave_post_office:
     slave.start()
 for slave in slave_post_office:
     slave.join()
+
+t_wait_for_ack.join()
+t_feed_slave_to_retransmission.join()
 
 print('debug: {0} packets in total!!!\ntime:{1}s...'.format(count_pkt.count, time.time() - start))
 # m.kill_master()

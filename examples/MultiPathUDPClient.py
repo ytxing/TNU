@@ -45,6 +45,8 @@ class Master_TCP(socket.socket):
         self.master = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         assert self.master != -1
         self.buffer = BUFFER()
+        self.buffer_to_app = []
+        self.data = []
         self.slaves = {}  # PathID:Slave_config
         self.slave_offset = 1
         self.slave_start_event = {}
@@ -94,7 +96,8 @@ class Master_TCP(socket.socket):
                 print('debug: got a packet at Path{0}...'.format(pathid))
                 this_segment = SEGMENT.decap(
                     data.decode())  # decap the data, the data is encoded and need to be decoded
-                this_segment.showseg('')
+                #
+
                 buffer.put((this_segment.pkt_seq, this_segment.encap()))
                 # buffer.put_segment_and_encap(this_segment)
                 if this_segment.pkt_type == pTYPES.END or this_segment.pkt_type == pTYPES.END_OF_SLAVE:
@@ -128,9 +131,33 @@ class Master_TCP(socket.socket):
                     else:
                         if segment.pkt_type == pTYPES.NO_MORE_SLAVE:
                             break
-
-
         print('debug: No longer waiting, Master is dead...')
+
+    def aggregate_buffer(self, ratio: float, total_seq: int):
+        max_sequence = -1
+        while max_sequence / self.buffer.total_sequence < ratio:
+            time.sleep(0.8)
+            if not self.buffer.empty():
+                this_seq, this_packet = self.buffer.get()
+                this_segment = SEGMENT.decap(this_packet)
+                print('debug: {}/{}'.format(max_sequence, this_segment.pkt_seq))
+                if max_sequence + 1 == this_segment.pkt_seq:  # 正常，没有失序包
+                    self.buffer_to_app.append(this_segment.pkt_data)
+                    max_sequence = this_segment.pkt_seq
+                else:
+                    if max_sequence + 1 > this_segment.pkt_seq:  # 不正常，重复传输，丢掉
+                        pass
+                    else:  # 不正常，出现失序包，发送ack，等待重传，拿出来的放回去
+                        self.buffer.put((this_seq, this_packet))
+                        ack_segment = SEGMENT(pTYPES.ACK, 0, max_sequence, this_segment.pathid,
+                                              this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                        ack_packet = ack_segment.encap()
+                        self.master.send(ack_packet.encode())
+                        time.sleep(0.02)
+        print('debug: enough packets, {}/{}={}'.format(max_sequence, self.buffer.total_sequence, ratio))
+        self.data = str.join('', self.buffer_to_app)
+        with open('recv.txt', 'w') as file:
+            file.write(self.data)
 
 
 m = Master_TCP()
@@ -139,9 +166,19 @@ t_master = Thread(target=m.waiting_for_order, daemon=True)
 t_master.start()
 t_master.join()
 
-segment = SEGMENT(pTYPES.I_WANT_DATA, 0, 0, 0, 1, 0, '')
+segment = SEGMENT(pTYPES.I_WANT_DATA, 0, 0, 0, 1, 0, 'send.txt')
 m.master.send(segment.encap().encode())
 print('debug: I want data...')
+packet = m.master.recv(65535).decode()
+segment = SEGMENT.decap(packet)
+if segment.pkt_type == pTYPES.CHUNK_INFO:
+    m.buffer.total_sequence = segment.pkt_seq
+    m.buffer.ratio = segment.pkt_ratio
+    print('debug: Chunk information:\nmax_sequence{},ratio{}...'.format(segment.pkt_seq, segment.pkt_ratio))
+else:
+    print('debug: No chunk information...')
+
+
 
 data_segment = []
 pathids = list(m.slaves.keys())
@@ -149,34 +186,26 @@ slave_post_office = []
 for pathid in pathids:
     t_slave_grab_data = Thread(target=m.grabdata, args=(pathid, m.buffer))
     slave_post_office.append(t_slave_grab_data)
+
+t_aggregate_buffer = Thread(target=m.aggregate_buffer, args=(1.0, 120))
+print('debug aggregating buffer...')
+t_aggregate_buffer.start()
 for slave in slave_post_office:
     slave.start()
 time.sleep(3)
 for slave in slave_post_office:
     slave.join()
+t_aggregate_buffer.join()
 # m.grabdata(1, m.buffer)
 seq = 0
 
-while not m.buffer.empty():
-    this_seq, this_segment = m.buffer.get()
-    if seq != this_seq:
-        print('should be {0} but {1}'.format(seq, this_seq))
-    seq += 1
-    data_segment.append(SEGMENT.decap(this_segment).pkt_data)
-print('debug: {}packets in total!!!'.format(seq))
+# while not m.buffer.empty():
+#     this_seq, this_segment = m.buffer.get()
+#     if seq != this_seq:
+#         print('should be {0} but {1}'.format(seq, this_seq))
+#     seq += 1
+#     data_segment.append(SEGMENT.decap(this_segment).pkt_data)
+# print('debug: {}packets in total!!!'.format(seq))
 
-data = str.join('', data_segment)
-with open('recv.txt', 'w') as file:
-    file.write(data)
 
 print('done!')
-# m.slave_run(0)
-
-# assert master != -1
-# master.connect(('127.0.0.1', 9880))
-# master.send('GET /data.txt')
-# data = master.recv(65535)  # data='127.0.0.1:9881'
-# slave_tuple = (data.split(':')[0], data.split(':')[1])  # data will be sent here
-# # 使用线程接收数据，并且实现端口支持从master获取控制信息。数据
-# # master循环接收来自服务器端的反馈
-# buffer = PriorityQueue()

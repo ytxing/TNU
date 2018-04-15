@@ -12,3 +12,4 @@ class pTYPES:
     DONE_TRANSMISSION = 9
     I_WANT_DATA = 10
     NO_MORE_SLAVE = 11
+    CHUNK_INFO = 12  # total_seq ratio opt
