@@ -15,6 +15,10 @@ class count_pkt:
     count = 0
 
 
+class threshold:
+    value = 30
+
+
 class slave_config:
     def __init__(self, addr, port, sock):
         self.addr = addr
@@ -101,17 +105,20 @@ class Master_TCP(socket.socket):
             this_slave = self.slaves[pathid]
             self.slave_start_event[pathid].wait()  # 等待slave开始运行后再进行操作
             while not self.slave_close_event.isSet():  # Event 结束信号没有set
-                this_seq, send_data = this_slave.ready_to_send.get()
-                time.sleep(0.6)
-                t = random.randint(1, 100)
-                if t < 50:
-                    print('debug: random loss {} < 50'.format(t))
+                print('debug: send_data_through_slave...')
+                if this_slave.ready_to_send.empty():
                     continue
-                print('debug: random loss {} > 50'.format(t))
+                this_seq, send_data = this_slave.ready_to_send.get()
+                time.sleep(0.3)
+                t = random.randint(1, 100)
+                if t < threshold.value:
+                    print('debug: random loss {} < {}'.format(t, threshold.value))
+                    continue
+                print('debug: random loss {} >= {}'.format(t, threshold.value))
                 this_slave.sock.sendto(send_data.encode(), this_slave.slave_tuple)
                 print(
                     'debug: slave {0} sends packet{3}: {1} -> {2}...'.format(pathid, this_slave.sock.getsockname(),
-                                                                         this_slave.slave_tuple, this_seq))
+                                                                             this_slave.slave_tuple, this_seq))
 
     def pre_feed_slave(self):
         count = 0
@@ -169,13 +176,26 @@ class Master_TCP(socket.socket):
                 print('debug: Server is retransmitting data{} to buffer_to_send...'.format(seq_to_trans))
                 self.buffer_to_send.put((seq_to_trans, self.buffer[seq_to_trans]))
             else:
-                print('debug: to much retrans of{}...'.format(seq_to_trans))
+                print('debug: too much retrans of{}...'.format(seq_to_trans))
 
-    # def slave_run(self, pathid: int):  # meixiehao!!
-    #     t = Thread(target=self.slaves[pathid].send_data_through_slave, args=self.buffer)
-    #     t.start()
-    #     self.slave_start_event[pathid].set()  # 指示该slave已经开始运行
-    #     # threading
+    def detective(self):
+        while True:
+            time.sleep(15)
+            flag = 0
+            for slave in t_slave_post_office:
+                if slave.isAlive():
+                    flag += 1
+                    print('debug: slave is alive...')
+            if t_wait_for_ack.isAlive():
+                flag += 1
+                print('debug: wait_for_ack is alive...')
+            if t_feed_slave_to_retransmission.isAlive():
+                flag += 1
+                print('debug: feed_slave_to_retransmission is alive...')
+            if self.slave_close_event.isSet():
+                print('debug: slave_close_event is set...')
+            if flag != 0:
+                break
 
 
 m = Master_TCP()
@@ -216,12 +236,12 @@ m.slave_start_event[1].set()
 m.slave_start_event[2].set()
 m.pre_feed_slave()
 pathids = list(m.slaves.keys())
-slave_post_office = []
+t_slave_post_office = []
 start = time.time()
 for pathid in pathids:
     salve_buffer = m.slaves[pathid].ready_to_send
     t_send_through_slave = Thread(target=m.send_data_through_slave, args=(pathid, salve_buffer))
-    slave_post_office.append(t_send_through_slave)
+    t_slave_post_office.append(t_send_through_slave)
 
 # done 增加一个线程 用于接收ack done
 t_wait_for_ack = Thread(target=m.wait_for_ack)
@@ -231,15 +251,19 @@ t_retransmission = Thread(target=m.retransmission)
 t_retransmission.start()
 t_feed_slave_to_retransmission = Thread(target=m.feed_slave_to_retransmission)
 t_feed_slave_to_retransmission.start()
-for slave in slave_post_office:
+for slave in t_slave_post_office:
     slave.start()
-for slave in slave_post_office:
-    slave.join()
 
+t_detective = Thread(target=m.detective)
+t_detective.start()
+t_detective.join()
+for slave in t_slave_post_office:
+    slave.join()
 t_wait_for_ack.join()
 t_feed_slave_to_retransmission.join()
 
 print('debug: {0} packets in total!!!\ntime:{1}s...'.format(count_pkt.count, time.time() - start))
+m.master.close()
 # m.kill_master()
 
 # while i < len(raw_buffer):

@@ -50,6 +50,7 @@ class Master_TCP(socket.socket):
         self.slaves = {}  # PathID:Slave_config
         self.slave_offset = 1
         self.slave_start_event = {}
+        self.slave_close_event = Event()
 
     def handshake(self, server_tuple: tuple):
         self.master.bind(client_address.addr_dict[0])
@@ -100,7 +101,7 @@ class Master_TCP(socket.socket):
 
                 buffer.put((this_segment.pkt_seq, this_segment.encap()))
                 # buffer.put_segment_and_encap(this_segment)
-                if this_segment.pkt_type == pTYPES.END or this_segment.pkt_type == pTYPES.END_OF_SLAVE:
+                if self.slave_close_event.isSet():
                     break
 
     def waiting_for_order(self):
@@ -135,8 +136,9 @@ class Master_TCP(socket.socket):
 
     def aggregate_buffer(self, ratio: float, total_seq: int):
         max_sequence = -1
+        start = time.time()
         while max_sequence / self.buffer.total_sequence < ratio:
-            time.sleep(0.8)
+            time.sleep(0.02)
             if not self.buffer.empty():
                 this_seq, this_packet = self.buffer.get()
                 this_segment = SEGMENT.decap(this_packet)
@@ -153,11 +155,16 @@ class Master_TCP(socket.socket):
                                               this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
                         ack_packet = ack_segment.encap()
                         self.master.send(ack_packet.encode())
-                        time.sleep(0.02)
+                        time.sleep(0.5)
         print('debug: enough packets, {}/{}={}'.format(max_sequence, self.buffer.total_sequence, ratio))
+        self.slave_close_event.set()
+        done_segment = SEGMENT(pTYPES.DONE_TRANSMISSION, 0, 0, 0, 1, 0, '')
+        done_packet = done_segment.encap()
+        self.master.send(done_packet.encode())
         self.data = str.join('', self.buffer_to_app)
         with open('recv.txt', 'w') as file:
             file.write(self.data)
+        print('debug: file written...time{}'.format(time.time() - start))
 
 
 m = Master_TCP()
@@ -187,7 +194,7 @@ for pathid in pathids:
     t_slave_grab_data = Thread(target=m.grabdata, args=(pathid, m.buffer))
     slave_post_office.append(t_slave_grab_data)
 
-t_aggregate_buffer = Thread(target=m.aggregate_buffer, args=(1.0, 120))
+t_aggregate_buffer = Thread(target=m.aggregate_buffer, args=(1, 120))
 print('debug aggregating buffer...')
 t_aggregate_buffer.start()
 for slave in slave_post_office:
@@ -198,7 +205,7 @@ for slave in slave_post_office:
 t_aggregate_buffer.join()
 # m.grabdata(1, m.buffer)
 seq = 0
-
+m.master.close()
 # while not m.buffer.empty():
 #     this_seq, this_segment = m.buffer.get()
 #     if seq != this_seq:
