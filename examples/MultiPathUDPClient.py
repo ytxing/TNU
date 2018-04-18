@@ -51,6 +51,7 @@ class Master_TCP(socket.socket):
         self.slave_offset = 1
         self.slave_start_event = {}
         self.slave_close_event = Event()
+        self.max_sequence = -1
 
     def handshake(self, server_tuple: tuple):
         self.master.bind(client_address.addr_dict[0])
@@ -135,28 +136,35 @@ class Master_TCP(socket.socket):
         print('debug: No longer waiting, Master is dead...')
 
     def aggregate_buffer(self, ratio: float, total_seq: int):
-        max_sequence = -1
         start = time.time()
-        while max_sequence / self.buffer.total_sequence < ratio:
+        t_timer = Thread(target=self.timer)
+        t_timer.start()
+        while self.max_sequence / self.buffer.total_sequence < ratio:
             time.sleep(0.02)
             if not self.buffer.empty():
                 this_seq, this_packet = self.buffer.get()
                 this_segment = SEGMENT.decap(this_packet)
-                print('debug: {}/{}'.format(max_sequence, this_segment.pkt_seq))
-                if max_sequence + 1 == this_segment.pkt_seq:  # 正常，没有失序包
+                print('debug: {}/{}'.format(self.max_sequence, this_segment.pkt_seq))
+                if self.max_sequence + 1 == this_segment.pkt_seq:  # 正常，没有失序包
                     self.buffer_to_app.append(this_segment.pkt_data)
-                    max_sequence = this_segment.pkt_seq
+                    self.max_sequence = this_segment.pkt_seq
+                    ack_segment = SEGMENT(pTYPES.ACK, 0, self.max_sequence, this_segment.pathid,
+                                          this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                    ack_packet = ack_segment.encap()
+                    self.master.send(ack_packet.encode())
+                    print('debug: ACK{}'.format(self.max_sequence))
                 else:
-                    if max_sequence + 1 > this_segment.pkt_seq:  # 不正常，重复传输，丢掉
+                    if self.max_sequence + 1 > this_segment.pkt_seq:  # 不正常，重复传输，丢掉
                         pass
                     else:  # 不正常，出现失序包，发送ack，等待重传，拿出来的放回去
                         self.buffer.put((this_seq, this_packet))
-                        ack_segment = SEGMENT(pTYPES.ACK, 0, max_sequence, this_segment.pathid,
+                        ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, this_segment.pathid,
                                               this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
                         ack_packet = ack_segment.encap()
                         self.master.send(ack_packet.encode())
+                        print('debug: ACK{} out of order...'.format(self.max_sequence))
                         time.sleep(0.5)
-        print('debug: enough packets, {}/{}={}'.format(max_sequence, self.buffer.total_sequence, ratio))
+        print('debug: enough packets, {}/{}={}'.format(self.max_sequence, self.buffer.total_sequence, ratio))
         self.slave_close_event.set()
         done_segment = SEGMENT(pTYPES.DONE_TRANSMISSION, 0, 0, 0, 1, 0, '')
         done_packet = done_segment.encap()
@@ -165,6 +173,19 @@ class Master_TCP(socket.socket):
         with open('recv.txt', 'w') as file:
             file.write(self.data)
         print('debug: file written...time{}'.format(time.time() - start))
+
+    def timer(self):
+        while not self.slave_close_event.isSet():
+            time.sleep(0.8)
+            if not self.buffer.empty():
+                this_seq, this_packet = self.buffer.get()
+                this_segment = SEGMENT.decap(this_packet)
+                self.buffer.put((this_seq, this_packet))
+                ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, this_segment.pathid,
+                                      this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                ack_packet = ack_segment.encap()
+                self.master.send(ack_packet.encode())
+                print('debug: ACK{} timer ACK...'.format(self.max_sequence))
 
 
 m = Master_TCP()

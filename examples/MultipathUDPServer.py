@@ -106,8 +106,8 @@ class Master_TCP(socket.socket):
             self.slave_start_event[pathid].wait()  # 等待slave开始运行后再进行操作
             while not self.slave_close_event.isSet():  # Event 结束信号没有set
                 print('debug: send_data_through_slave...')
-                if this_slave.ready_to_send.empty():
-                    continue
+                # if this_slave.ready_to_send.empty():
+                #     continue
                 this_seq, send_data = this_slave.ready_to_send.get()
                 time.sleep(0.3)
                 t = random.randint(1, 100)
@@ -150,18 +150,32 @@ class Master_TCP(socket.socket):
                         this_slave.ready_to_send.put((raw_segment.pkt_seq, raw_segment.encap()))
 
     def wait_for_ack(self):
+        last_ack = -1
+        dup_count = 0
         while True:
             print('debug: Server is waiting for acks...')
             ack_pkt = self.master.recv(65535).decode()
             ack_segment = SEGMENT.decap(ack_pkt)
-            if ack_segment.pkt_type == pTYPES.ACK:  # 这里要给一个mailbox发送pkt_seq，然后重传这些包
+            if ack_segment.pkt_type == pTYPES.OUT_OF_ORDER_PACKET:  # 这里要给一个mailbox发送pkt_seq，然后重传这些包
                 self.retrans_seq.put(int(ack_segment.pkt_ack) + 1)  # 重传ACK后面一个包
-                print('debug: Got a ACK{}'.format(ack_segment.pkt_ack))
+                print('debug: Got a packet{} missing...'.format(ack_segment.pkt_ack))
             else:
-                if ack_segment.pkt_type == pTYPES.DONE_TRANSMISSION:
-                    print('debug: Client done...\nClosing slaves...')
-                    self.slave_close_event.set()  # 设置子流结束标志，停止子流发送send through slaves
-                    break
+                if ack_segment.pkt_type == pTYPES.ACK:
+                    if last_ack > ack_segment.pkt_ack:
+                        pass
+                    else:
+                        if last_ack == ack_segment.pkt_ack:
+                            dup_count += 1
+                            if dup_count >= 3:
+                                self.retrans_seq.put(int(ack_segment.pkt_ack) + 1)  # 重传ACK后面一个包
+                        else:
+                            last_ack = ack_segment.pkt_ack  # 这里理论上可以增加窗口大小 还没有做
+                    print('debug: ACK{}'.format(ack_segment.pkt_ack))
+                else:
+                    if ack_segment.pkt_type == pTYPES.DONE_TRANSMISSION:
+                        print('debug: Client done...\nClosing slaves...')
+                        self.slave_close_event.set()  # 设置子流结束标志，停止子流发送send through slaves
+                        break
 
     def retransmission(self):
         while not self.slave_close_event.isSet():
