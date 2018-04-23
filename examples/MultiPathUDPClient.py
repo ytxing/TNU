@@ -163,7 +163,7 @@ class Master_TCP(socket.socket):
                         ack_packet = ack_segment.encap()
                         self.master.send(ack_packet.encode())
                         print('debug: ACK{} out of order...'.format(self.max_sequence))
-                        time.sleep(0.5)
+                        time.sleep(0.6)
         print('debug: enough packets, {}/{}={}'.format(self.max_sequence, self.buffer.total_sequence, ratio))
         self.slave_close_event.set()
         done_segment = SEGMENT(pTYPES.DONE_TRANSMISSION, 0, 0, 0, 1, 0, '')
@@ -178,11 +178,8 @@ class Master_TCP(socket.socket):
         while not self.slave_close_event.isSet():
             time.sleep(0.8)
             if not self.buffer.empty():
-                this_seq, this_packet = self.buffer.get()
-                this_segment = SEGMENT.decap(this_packet)
-                self.buffer.put((this_seq, this_packet))
-                ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, this_segment.pathid,
-                                      this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, 0,
+                                      1, 1, '')  # ACK目前最大的包
                 ack_packet = ack_segment.encap()
                 self.master.send(ack_packet.encode())
                 print('debug: ACK{} timer ACK...'.format(self.max_sequence))

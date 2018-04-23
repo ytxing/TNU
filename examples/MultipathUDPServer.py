@@ -16,7 +16,7 @@ class count_pkt:
 
 
 class threshold:
-    value = 30
+    value = 5
 
 
 class slave_config:
@@ -109,7 +109,7 @@ class Master_TCP(socket.socket):
                 # if this_slave.ready_to_send.empty():
                 #     continue
                 this_seq, send_data = this_slave.ready_to_send.get()
-                time.sleep(0.3)
+                time.sleep(0.6)
                 t = random.randint(1, 100)
                 if t < threshold.value:
                     print('debug: random loss {} < {}'.format(t, threshold.value))
@@ -168,8 +168,10 @@ class Master_TCP(socket.socket):
                             dup_count += 1
                             if dup_count >= 3:
                                 self.retrans_seq.put(int(ack_segment.pkt_ack) + 1)  # 重传ACK后面一个包
+                                dup_count = 0
                         else:
                             last_ack = ack_segment.pkt_ack  # 这里理论上可以增加窗口大小 还没有做
+                            dup_count = 0
                     print('debug: ACK{}'.format(ack_segment.pkt_ack))
                 else:
                     if ack_segment.pkt_type == pTYPES.DONE_TRANSMISSION:
