@@ -139,14 +139,16 @@ class Master_TCP(socket.socket):
         start = time.time()
         t_timer = Thread(target=self.timer)
         t_timer.start()
-        while self.max_sequence / self.buffer.total_sequence < ratio:
+        count = 0
+        while count / self.buffer.total_sequence < ratio:
             time.sleep(0.02)
             if not self.buffer.empty():
                 this_seq, this_packet = self.buffer.get()
                 this_segment = SEGMENT.decap(this_packet)
-                print('debug: {}/{}'.format(self.max_sequence, this_segment.pkt_seq))
+                print('debug: (NO.{}){}/{}'.format(self.max_sequence, count, this_segment.pkt_seq))
                 if self.max_sequence + 1 == this_segment.pkt_seq:  # 正常，没有失序包
                     self.buffer_to_app.append(this_segment.pkt_data)
+                    count += 1
                     self.max_sequence = this_segment.pkt_seq
                     ack_segment = SEGMENT(pTYPES.ACK, 0, self.max_sequence, this_segment.pathid,
                                           this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
@@ -157,13 +159,30 @@ class Master_TCP(socket.socket):
                     if self.max_sequence + 1 > this_segment.pkt_seq:  # 不正常，重复传输，丢掉
                         pass
                     else:  # 不正常，出现失序包，发送ack，等待重传，拿出来的放回去
-                        self.buffer.put((this_seq, this_packet))
-                        ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, this_segment.pathid,
-                                              this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
-                        ack_packet = ack_segment.encap()
-                        self.master.send(ack_packet.encode())
-                        print('debug: ACK{} out of order...'.format(self.max_sequence))
-                        time.sleep(0.6)
+                        if self.buffer.total_sequence - this_segment.pkt_seq > ratio * self.buffer.total_sequence:  # 剩下的还够补，就不要求重传
+                            self.buffer_to_app.append(this_segment.pkt_data)
+                            count += 1
+                            self.max_sequence = this_segment.pkt_seq
+                            ack_segment = SEGMENT(pTYPES.ACK, 0, self.max_sequence, this_segment.pathid,
+                                                  this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                            ack_packet = ack_segment.encap()
+                            self.master.send(ack_packet.encode())
+                            print('debug: ACK{}out of order...but pass'.format(self.max_sequence))
+                        else:
+                            self.buffer.put((this_seq, this_packet))
+                            ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, this_segment.pathid,
+                                                  this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                            ack_packet = ack_segment.encap()
+                            self.master.send(ack_packet.encode())
+                            print('debug: ACK{} out of order...'.format(self.max_sequence))
+                            time.sleep(0.6)
+                        # self.buffer.put((this_seq, this_packet))
+                        # ack_segment = SEGMENT(pTYPES.OUT_OF_ORDER_PACKET, 0, self.max_sequence, this_segment.pathid,
+                        #                       this_segment.pkt_ratio, this_segment.opt, '')  # ACK目前最大的包
+                        # ack_packet = ack_segment.encap()
+                        # self.master.send(ack_packet.encode())
+                        # print('debug: ACK{} out of order...'.format(self.max_sequence))
+                        # time.sleep(0.6)
         print('debug: enough packets, {}/{}={}'.format(self.max_sequence, self.buffer.total_sequence, ratio))
         self.slave_close_event.set()
         done_segment = SEGMENT(pTYPES.DONE_TRANSMISSION, 0, 0, 0, 1, 0, '')
@@ -212,7 +231,7 @@ for pathid in pathids:
     t_slave_grab_data = Thread(target=m.grabdata, args=(pathid, m.buffer))
     slave_post_office.append(t_slave_grab_data)
 
-t_aggregate_buffer = Thread(target=m.aggregate_buffer, args=(1, 120))
+t_aggregate_buffer = Thread(target=m.aggregate_buffer, args=(0.8, 120))
 print('debug aggregating buffer...')
 t_aggregate_buffer.start()
 for slave in slave_post_office:

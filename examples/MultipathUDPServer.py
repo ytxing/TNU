@@ -16,7 +16,7 @@ class count_pkt:
 
 
 class threshold:
-    value = 5
+    value = 15
 
 
 class slave_config:
